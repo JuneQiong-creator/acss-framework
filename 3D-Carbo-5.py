@@ -238,7 +238,7 @@ def plot_all_patients(full_data):
     plt.axvline(0, color='gray', linestyle=':', linewidth=1)
     plt.plot(0, 0, 'ko', markersize=5, label='Origin (0,0)')
     plt.tight_layout()
-    plt.savefig("all_patients_comparison.png", dpi=300, bbox_inches='tight')
+    plt.savefig("Carbo_all_patients_comparison.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -545,7 +545,7 @@ plt.annotate(f'Best Model: {best_overall_model}\nFitting Percentage: {best_perce
              bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9))
 
 plt.tight_layout()
-plt.savefig("best_model_distribution.png", dpi=300)
+plt.savefig("Carbo_best_model_distribution.png", dpi=300)
 plt.show()
 
 # Save statistical results to CSV
@@ -817,7 +817,7 @@ plt.grid(True, linestyle='--', alpha=0.3)
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left',
            title='Patient Parameters', fontsize=8, framealpha=0.5, ncol=2)
 plt.tight_layout()
-plt.savefig('all_patients_best_model_curves.png', dpi=300, bbox_inches='tight')
+plt.savefig('Carbo_all_patients_best_model_curves.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # New step: Generate fitted 8-point response values (model decides dose=0)
@@ -1436,7 +1436,7 @@ plt.ylabel('CRS')
 plt.grid(alpha=0.2)
 
 plt.tight_layout(pad=2.0)
-plt.savefig(f"CRS_ASI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"Carbo_CRS_ASI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 # --- LOOCV visualization ---
@@ -1461,7 +1461,7 @@ if not loocv_results_df.empty:
     # Classification change heatmap
     pivot_table_crs = loocv_results_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed', aggfunc='mean')
     plt.subplot(2,2,2)
-    sns.heatmap(pivot_table_crs, cmap='RdYlGn_r', cbar_kws={'label':'Change Magnitude (0=No,1=Yes)'}, annot=True, fmt='.2f')
+    sns.heatmap(pivot_table_crs, cmap='RdYlGn_r', vmin=0, vmax=1, cbar_kws={'label':'Change Magnitude (0=No,1=Yes)'}, annot=True, fmt='.2f')
     plt.title('Classification Change Heatmap', fontsize=12)
     plt.xlabel('Left-Out Patient ID')
     plt.ylabel('Patient ID')
@@ -1489,7 +1489,7 @@ if not loocv_results_df.empty:
     plt.xticks(rotation=45)
 
     plt.tight_layout(pad=2.0)
-    plt.savefig(f"{output_dir}/CRS_ASI_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{output_dir}/Carbo_CRS_ASI_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 print(f"\n✅ CRS-ASI LOOCV results and visualizations saved in {output_dir}/")
@@ -1631,7 +1631,7 @@ def plot_msscf_grouped_fitted_curves(sigmoid_results, all_patients_df, dose_rang
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10, framealpha=0.8)
 
     # Save plot
-    output_path = "grouped_fitted_curves.png"
+    output_path = "Carbo_grouped_fitted_curves.png"
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.show()
@@ -1640,7 +1640,6 @@ def plot_msscf_grouped_fitted_curves(sigmoid_results, all_patients_df, dose_rang
 # Execute the plotting function
 if __name__ == "__main__":
     plot_msscf_grouped_fitted_curves(sigmoid_results, all_patients_df, dose_range=(0, 50))
-
 
 
 
@@ -1660,7 +1659,7 @@ df = pd.read_csv("use_metrics.csv", index_col=0)  # Patient_ID as index
 ic50_series = df['IC50']
 
 # --- Bootstrap to calculate 95% CI ---
-def bootstrap_ci(data, n_boot=1000, ci=0.95):
+def bootstrap_ci(data, n_boot=5000, ci=0.95):
     boot_samples = np.random.choice(data, size=(n_boot, len(data)), replace=True)
     means = np.mean(boot_samples, axis=1)
     lower = np.percentile(means, (1-ci)/2*100)
@@ -1668,7 +1667,7 @@ def bootstrap_ci(data, n_boot=1000, ci=0.95):
     return lower, upper
 
 low_thresh, high_thresh = bootstrap_ci(ic50_series.values, n_boot=5000, ci=0.95)
-print(f"Bootstrap 95% CI thresholds: Low={low_thresh:.4f}, High={high_thresh:.4f}")
+print(f"Bootstrap 95% CI thresholds for IC50: Low={low_thresh:.4f}, High={high_thresh:.4f}")
 
 # --- Classification based on CI ---
 def ic50_ci_group(ic50):
@@ -1683,38 +1682,71 @@ ic50_groups = ic50_series.apply(ic50_ci_group)
 df['IC50_CI'] = ic50_groups
 
 # --- LOOCV ---
-def perform_loocv_ic50(scores_series, n_min=1, output_dir=output_dir):
+def perform_loocv_ic50(scores_series, n_min=2, output_dir=output_dir):
     patient_ids = scores_series.index.to_list()
     loocv_results = []
+    consistency_records = []
     left_out_match_flags = []
+
+    original_groups = scores_series.apply(ic50_ci_group)
+    original_groups_series = pd.Series(original_groups, index=patient_ids)
 
     for left_out_id in patient_ids:
         loo_scores = scores_series.drop(labels=left_out_id)
-        # Recompute CI thresholds without left-out patient
-        loo_low, loo_high = bootstrap_ci(loo_scores.values, n_boot=5000, ci=0.95)
-        loo_groups = loo_scores.apply(lambda x: 'Low' if x > loo_high else 'High' if x < loo_low else 'Intermediate')
-        original_groups_series = df.loc[loo_scores.index, 'IC50_CI']
-
-        # Skip if any group has < n_min patients or less than 3 groups
-        counts = loo_groups.value_counts()
-        if counts.min() < n_min or len(counts) < 3:
+        if len(loo_scores) < 3:
             continue
 
+        # Recompute CI thresholds without left-out patient
+        loo_low, loo_high = bootstrap_ci(loo_scores.values, n_boot=5000, ci=0.95)
+
+        def loo_ic50_ci_group(ic50):
+            if ic50 > loo_high:
+                return 'Low'
+            elif ic50 < loo_low:
+                return 'High'
+            else:
+                return 'Intermediate'
+
+        loo_groups = loo_scores.apply(loo_ic50_ci_group)
+        loo_groups_series = pd.Series(loo_groups, index=loo_scores.index)
+
+        # Skip if any group has < n_min patients or less than 3 groups
+        unique_loo, counts_loo = np.unique(loo_groups, return_counts=True)
+        if len(unique_loo) != 3 or np.any(counts_loo < n_min):
+            continue
+
+        # 计算留出患者的分类
+        left_out_score = float(scores_series.loc[left_out_id])
+        loo_label_leftout = loo_ic50_ci_group(left_out_score)
+        orig_label_leftout = original_groups_series.loc[left_out_id]
+        left_out_match = int(loo_label_leftout == orig_label_leftout)
+        left_out_match_flags.append(left_out_match)
+
+        # 记录剩余患者结果，并添加留出患者信息
         loo_result_df = pd.DataFrame({
             'Patient_ID': loo_scores.index,
             'IC50': loo_scores.values,
-            'LOOCV_Group': loo_groups.values,
-            'Original_Group': original_groups_series.values
+            'LOOCV_Group': loo_groups_series.values,
+            'Original_Group': original_groups_series.loc[loo_scores.index].values,
+            'Low_Threshold': loo_low,
+            'High_Threshold': loo_high,
+            'Left_Out_ID': left_out_id,
+            'Left_Out_Score': left_out_score,
+            'Left_Out_LOOCV_Group': loo_label_leftout,
+            'Left_Out_Original_Group': orig_label_leftout,
+            'Left_Out_Match': left_out_match
         })
         loo_result_df['Changed'] = (loo_result_df['LOOCV_Group'] != loo_result_df['Original_Group']).astype(int)
-        loo_result_df['Left_Out_ID'] = left_out_id
+        loo_filename = f"{output_dir}/LOOCV_Result_Patient_{left_out_id}.csv"
+        loo_result_df.to_csv(loo_filename, index=False)
         loocv_results.append(loo_result_df)
 
-        left_out_score = scores_series.loc[left_out_id]
-        left_out_label = 'Low' if left_out_score > loo_high else 'High' if left_out_score < loo_low else 'Intermediate'
-        left_out_match_flags.append(df.loc[left_out_id,'IC50_CI'] == left_out_label)
+        # 添加一致性记录（剩余患者）
+        for pid in loo_scores.index:
+            changed_flag = int(original_groups_series.loc[pid] != loo_groups_series.loc[pid])
+            consistency_records.append(changed_flag)
 
-    mean_change_rate = float(np.mean([row['Changed'] for df_loo in loocv_results for _, row in df_loo.iterrows()])) if loocv_results else np.nan
+    mean_change_rate = float(np.mean(consistency_records)) if consistency_records else np.nan
     mean_match_rate = float(np.mean(left_out_match_flags)) if left_out_match_flags else np.nan
     loocv_results_df = pd.concat(loocv_results, ignore_index=True) if loocv_results else pd.DataFrame()
     return mean_change_rate, mean_match_rate, loocv_results_df
@@ -1772,7 +1804,31 @@ metrics_df.to_csv(f"IC50_CI_Classification_Metrics.csv", index=False)
 df.to_csv("IC50_CI_classification_results.csv")
 loocv_results_df.to_csv(f"{output_dir}/LOOCV_All_Results.csv", index=False)
 
-print("\n✅ IC50-CI LOOCV results saved.")
+# Save LOOCV summary
+summary_df = pd.DataFrame({
+    'Metric': ['Mean_Change_Rate', 'Mean_Match_Rate'],
+    'Value': [mean_change_rate, mean_match_rate]
+})
+summary_df.to_csv(f"{output_dir}/LOOCV_Summary.csv", index=False)
+
+# Calculate threshold statistics
+if not loocv_results_df.empty:
+    threshold_stats = loocv_results_df.groupby('Left_Out_ID').agg({
+        'Low_Threshold': ['mean', 'std', 'min', 'max'],
+        'High_Threshold': ['mean', 'std', 'min', 'max'],
+        'Left_Out_Match': ['mean']
+    }).reset_index()
+    threshold_stats.columns = ['Left_Out_ID', 'Low_Mean', 'Low_Std', 'Low_Min', 'Low_Max',
+                               'High_Mean', 'High_Std', 'High_Min', 'High_Max',
+                               'Left_Out_Match_Rate']
+    threshold_stats.to_csv(f"{output_dir}/Threshold_Statistics.csv", index=False)
+
+# Save left-out patient classification summary
+left_out_summary = loocv_results_df[['Left_Out_ID', 'Left_Out_Score', 'Left_Out_LOOCV_Group',
+                                    'Left_Out_Original_Group', 'Left_Out_Match']].drop_duplicates()
+left_out_summary.to_csv(f"{output_dir}/Left_Out_Classification_Summary.csv", index=False)
+
+print("\n✅ IC50-CI classification and LOOCV results saved.")
 
 sns.set(style="whitegrid")
 
@@ -1820,37 +1876,86 @@ plt.ylabel('IC50 (μM)')
 plt.grid(alpha=0.2)
 
 plt.tight_layout(pad=2.0)
-plt.savefig(f"IC50_CI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"Carbo_IC50_CI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
 plt.show()
-
 
 # --- LOOCV Visualization ---
-plt.figure(figsize=(20, 12))
-plt.suptitle('Carbo IC50-CI LOOCV Analysis', fontsize=16, y=1.02)
+if not loocv_results_df.empty:
+    plt.figure(figsize=(20, 12))
+    plt.suptitle('Carbo IC50-CI LOOCV Analysis', fontsize=16, y=1.02)
 
-# 1. Classification change heatmap
-pivot_table_ic50 = loocv_results_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed', aggfunc='mean')
-plt.subplot(2, 2, 1)
-sns.heatmap(pivot_table_ic50, cmap='RdYlGn_r', cbar_kws={'label': 'Changed (1=Yes, 0=No)'}, annot=True, fmt='.0f')
-plt.title('Classification Change Heatmap', fontsize=12)
-plt.xlabel('Left-Out Patient ID')
-plt.ylabel('Patient ID')
-plt.xticks(rotation=45)
-plt.yticks(rotation=0)
+    # 1. Threshold variation plot
+    threshold_stats_vis = loocv_results_df.groupby('Left_Out_ID').agg({
+        'Low_Threshold': 'mean',
+        'High_Threshold': 'mean'
+    }).reset_index()
+    plt.subplot(2, 2, 1)
+    plt.plot(threshold_stats_vis['Left_Out_ID'], threshold_stats_vis['Low_Threshold'], label='Mean Low Threshold', color='#4e79a7')
+    plt.plot(threshold_stats_vis['Left_Out_ID'], threshold_stats_vis['High_Threshold'], label='Mean High Threshold', color='#e15759')
+    plt.title('Threshold Variation Across LOOCV', fontsize=12)
+    plt.xlabel('Left-Out Patient ID')
+    plt.ylabel('Threshold Value')
+    plt.legend()
+    plt.grid(alpha=0.2)
 
-# 2. LOOCV group distribution
-plt.subplot(2, 2, 2)
-sns.countplot(data=loocv_results_df, x='LOOCV_Group', hue='Original_Group',
-              palette=['#4e79a7','#f28e2b','#e15759'], order=['High','Intermediate','Low'])
-plt.title('LOOCV Group vs Original Group Distribution', fontsize=12)
-plt.xlabel('LOOCV Group')
-plt.ylabel('Count')
-plt.legend(title='Original Group')
-plt.grid(alpha=0.2)
+    pivot_table_ic50 = loocv_results_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed',
+                                                    aggfunc='mean')
+    plt.subplot(2, 2, 2)
+    sns.heatmap(pivot_table_ic50, cmap='RdYlGn_r', vmin=0, vmax=1, cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'},
+                annot=True, fmt='.2f')
+    plt.title('Classification Change Heatmap', fontsize=12)
+    plt.xlabel('Left-Out Patient ID')
+    plt.ylabel('Patient ID')
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    plt.tight_layout()
 
-plt.tight_layout(pad=2.0)
-plt.savefig(f"{output_dir}/IC50_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
-plt.show()
+    # 3. LOOCV group distribution
+    plt.subplot(2, 2, 3)
+    sns.countplot(data=loocv_results_df, x='LOOCV_Group', hue='Original_Group',
+                  palette=['#4e79a7','#f28e2b','#e15759'])
+    plt.title('LOOCV Group vs Original Group Distribution', fontsize=12)
+    plt.xlabel('LOOCV Group')
+    plt.ylabel('Count')
+    plt.legend(title='Original Group')
+    plt.grid(alpha=0.2)
+
+    # 4. Left-out patient match rate
+    left_out_summary_vis = loocv_results_df[['Left_Out_ID', 'Left_Out_Match']].groupby('Left_Out_ID')['Left_Out_Match'].mean().reset_index()
+    plt.subplot(2, 2, 4)
+    sns.barplot(data=left_out_summary_vis, x='Left_Out_ID', y='Left_Out_Match', color='#4e79a7')
+    plt.title('Left-Out Patient Match Rate Across LOOCV', fontsize=12)
+    plt.xlabel('Left-Out Patient ID')
+    plt.ylabel('Match Rate')
+    plt.grid(alpha=0.2)
+    plt.xticks(rotation=45)
+
+    plt.tight_layout(pad=2.0)
+    plt.savefig(f"{output_dir}/Carbo_IC50_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # Boxplot for threshold and parameter statistics
+    plt.figure(figsize=(12, 6))
+    plt.suptitle('Threshold Statistics Across LOOCV', fontsize=14, y=1.02)
+
+    plt.subplot(1, 2, 1)
+    sns.boxplot(data=loocv_results_df[['Low_Threshold', 'High_Threshold']],
+                palette=['#4e79a7', '#e15759'])
+    plt.title('Low and High Threshold Distribution', fontsize=12)
+    plt.ylabel('Threshold Value')
+    plt.grid(alpha=0.2)
+
+    plt.subplot(1, 2, 2)
+    sns.boxplot(data=loocv_results_df[['IC50']], palette=['#4e79a7'])
+    plt.title('IC50 Distribution', fontsize=12)
+    plt.ylabel('IC50 Value')
+    plt.grid(alpha=0.2)
+
+    plt.tight_layout(pad=2.0)
+    plt.savefig(f"{output_dir}/Threshold_Parameter_Boxplot.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
+print(f"\nAll LOOCV results and visualizations saved in {output_dir}/")
 
 
 
@@ -2087,7 +2192,7 @@ plt.ylabel('CRS')
 plt.grid(alpha=0.2)
 
 plt.tight_layout(pad=2.0)
-plt.savefig(f"CRS_CI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"Carbo_CRS_CI_Classification_Visualization.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 # --- LOOCV Visualization ---
@@ -2112,7 +2217,7 @@ if not loocv_results_df.empty:
     # 2. Classification change heatmap
     pivot_table_crs = loocv_results_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed', aggfunc='mean')
     plt.subplot(2, 2, 2)
-    sns.heatmap(pivot_table_crs, cmap='RdYlGn_r', cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
+    sns.heatmap(pivot_table_crs, cmap='RdYlGn_r', vmin=0, vmax=1, cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
     plt.title('Classification Change Heatmap', fontsize=12)
     plt.xlabel('Left-Out Patient ID')
     plt.ylabel('Patient ID')
@@ -2140,7 +2245,7 @@ if not loocv_results_df.empty:
     plt.xticks(rotation=45)
 
     plt.tight_layout(pad=2.0)
-    plt.savefig(f"{output_dir}/CRS_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{output_dir}/Carbo_CRS_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
     plt.show()
 
     # Boxplot for threshold and parameter statistics
@@ -2504,7 +2609,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
     plt.grid(alpha=0.2)
 
     plt.tight_layout(pad=2.0)
-    plt.savefig(f"{algo_name}_Clustering_Visualization.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"Carbo_{algo_name}_Clustering_Visualization.png", dpi=300, bbox_inches='tight')
     plt.show()
 
     # LOOCV Visualization
@@ -2528,7 +2633,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
         # 2. Classification change heatmap
         pivot_table = loocv_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed', aggfunc='mean')
         plt.subplot(2, 2, 2)
-        sns.heatmap(pivot_table, cmap='RdYlGn_r', cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
+        sns.heatmap(pivot_table, cmap='RdYlGn_r', vmin=0, vmax=1, cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
         plt.title('Classification Change Heatmap', fontsize=12)
         plt.xlabel('Left-Out Patient ID')
         plt.ylabel('Patient ID')
@@ -2556,7 +2661,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
         plt.xticks(rotation=45)
 
         plt.tight_layout(pad=2.0)
-        plt.savefig(f"{out_dir}/{algo_name}_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{out_dir}/Carbo_{algo_name}_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
         plt.show()
 
         # Boxplot for parameters
@@ -2925,7 +3030,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
     plt.grid(alpha=0.2)
 
     plt.tight_layout(pad=2.0)
-    plt.savefig(f"{algo_name}_Clustering_Visualization.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"Carbo_{algo_name}_Clustering_Visualization.png", dpi=300, bbox_inches='tight')
     plt.show()
 
     # LOOCV Visualization
@@ -2949,7 +3054,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
         # 2. Classification change heatmap
         pivot_table = loocv_df.pivot_table(index='Patient_ID', columns='Left_Out_ID', values='Changed', aggfunc='mean')
         plt.subplot(2, 2, 2)
-        sns.heatmap(pivot_table, cmap='RdYlGn_r', cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
+        sns.heatmap(pivot_table, cmap='RdYlGn_r', vmin=0, vmax=1, cbar_kws={'label': 'Change Magnitude (0=No, 1=Yes)'}, annot=True, fmt='.2f')
         plt.title('Classification Change Heatmap', fontsize=12)
         plt.xlabel('Left-Out Patient ID')
         plt.ylabel('Patient ID')
@@ -2977,7 +3082,7 @@ for (algo_name, model), out_dir in zip(algorithms, output_dirs):
         plt.xticks(rotation=45)
 
         plt.tight_layout(pad=2.0)
-        plt.savefig(f"{out_dir}/{algo_name}_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{out_dir}/Carbo_{algo_name}_LOOCV_Analysis_Visualization.png", dpi=300, bbox_inches='tight')
         plt.show()
 
         # Boxplot for parameters
@@ -3150,13 +3255,13 @@ plt.show()
 # 2. ICES-specific barplot (sorted by ICES)
 plt.figure(figsize=(10, 6))
 sns.barplot(data=combined_metrics, x='Method', y='ICES', hue='Method', palette='tab10', legend=False)
-plt.title('Ranking of Clustering Methods by ICES', fontsize=14)
+plt.title('Ranking of Clustering Methods by IPES', fontsize=14)
 plt.xlabel('Method')
-plt.ylabel('ICES')
+plt.ylabel('IPES')
 plt.xticks(rotation=45, ha='right')
 plt.grid(alpha=0.2)
 plt.tight_layout()
-plt.savefig(f"Carbo_ICES_Ranking_Barplot.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"Carbo_IPES_Ranking_Barplot.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 # 3. Heatmap of normalized metrics
