@@ -1,3 +1,23 @@
+"""
+ACSS Research Script for Dose-Response Curve Analysis and Patient Classification
+
+This script performs a comprehensive analysis of 5-FU dose-response data for a cohort of patients.
+The pipeline includes the following steps:
+1.  Data Preprocessing: Cleaning, imputation, and merging of raw data.
+2.  Mathematical Model Selection: Comparing four models (sigEmax, Emax, Quadratic, Logistic) to find the best fit for each patient.
+3.  Optimal Model Fitting: Applying the best model (Sigmoid Emax) to all patients to derive key pharmacological parameters (EC50, IC50, MED, etc.).
+4.  Composite Response Score (CRS) Construction: Calculating a weighted score from fitted dose-response curves.
+5.  Grid Search for CRS-ASI Parameters: Finding optimal k1/k2 thresholds for the Adaptive Statistical Iteration (ASI) method using a custom Integrated Clustering Evaluation Score (ICES).
+6.  CRS-ASI Classification & LOOCV: Classifying patients into sensitivity groups using CRS-ASI and validating with Leave-One-Out Cross-Validation (LOOCV).
+7.  IC50-CI Classification & LOOCV: Classifying patients based on the 95% confidence interval of the IC50 mean.
+8.  CRS-CI Classification & LOOCV: Classifying patients based on the 95% confidence interval of the CRS mean.
+9.  IC50-ML Clustering & LOOCV: Classifying patients using machine learning (KMeans, Hierarchical, GMM) on IC50 values.
+10. CRS-ML Clustering & LOOCV: Classifying patients using machine learning (KMeans, Hierarchical, GMM) on CRS values.
+11. Method Comparison: Evaluating and ranking all nine classification methods based on separation, balance, and robustness metrics.
+
+The script generates multiple CSV files for results and PNG images for visualizations.
+"""
+
 import os
 import numpy as np
 import pandas as pd
@@ -830,19 +850,6 @@ use_metrics_df = use_metrics_df.join(composite_response)
 use_metrics_df.to_csv("use_metrics.csv")
 print(f"Saved combined CRS + MED/IC50/IC90 to use_metrics.csv")
 
-# --- Apply pre-classification for missing IC50 ---
-#preclassified_mask = use_metrics_df['IC50'].isna()
-#preclassified_ids = use_metrics_df.index[preclassified_mask].tolist()
-
-#preclassified_df = use_metrics_df.loc[preclassified_ids].copy()
-#preclassified_df['Pre_C'] = 'Low'
-
-#preclassified_df.to_csv("5-FU_preclassified_patients.csv")
-#print(f"Pre-classified {len(preclassified_df)} patients with missing IC50 as Low.")
-#print(preclassified_df)
-
-# --- Remaining patients (with IC50 available) ---
-# no-preclassification
 remaining_df = use_metrics_df.copy()
 
 
@@ -869,12 +876,6 @@ use_metrics_df = pd.read_csv("use_metrics.csv")
 use_metrics_df['Patient_ID'] = use_metrics_df['Patient_ID'].astype(str)
 use_metrics_df = use_metrics_df.set_index('Patient_ID')
 
-#preclassified_df = pd.read_csv("5-FU_preclassified_patients.csv")
-#preclassified_df['Patient_ID'] = preclassified_df['Patient_ID'].astype(str)
-#preclassified_df = preclassified_df.set_index('Patient_ID')
-#preclassified_df['Pre_C'] = 'Low'
-
-#remaining_df = pd.read_csv("5-FU_after_preclassification.csv")
 remaining_df = pd.read_csv("use_metrics.csv")
 remaining_df['Patient_ID'] = remaining_df['Patient_ID'].astype(str)
 remaining_df = remaining_df.set_index('Patient_ID')
@@ -1422,32 +1423,6 @@ print(f"\n✅ CRS-ASI LOOCV results and visualizations saved in {output_dir}/")
 # Load data
 fitted_responses = pd.read_csv("fitted_data.csv")  # Contains Patient_ID and dose-response columns
 classification_results = pd.read_csv("CRS_ASI_classification_results.csv")  # Contains Patient_ID, CRS_ASI, etc.
-#preclassified_patients = pd.read_csv("5-FU_preclassified_patients.csv")  # Contains Patient_ID, MSSCF
-
-# Step 1: Extract relevant columns from preclassified patients
-#preclassified_df = preclassified_patients[['Patient_ID', 'Pre_C']].copy()
-
-# Step 2: Merge classification_results with preclassified_patients to create a complete classification column
-# Use 'CRS_ASI' as the final column name, prioritizing preclassified_patients' MSSCF
-#classification_combined = classification_results[['Patient_ID', 'CRS_ASI']].copy()
-#classification_combined = classification_combined.merge(
-    #preclassified_df,
-    #on='Patient_ID',
-    #how='outer'  # Ensure all patients from both sources are included
-#)
-
-# Create a unified classification column (CRS_ASI)
-# If a patient is in preclassified_patients, use Pre_C; otherwise, use CRS_ASI
-#classification_combined['CRS_ASI'] = classification_combined['Pre_C'].fillna(classification_combined['CRS_ASI'])
-#classification_combined = classification_combined[['Patient_ID', 'CRS_ASI']].dropna(subset=['CRS_ASI'])  # Drop rows with no classification
-
-# Step 3: Merge with fitted_responses to include all dose-response data
-#all_patients_df = pd.merge(
-    #fitted_responses,
-    #classification_combined,
-    #on="Patient_ID",
-    #how="left"  # Keep all patients from fitted_responses
-#)
 
 # Merge classification results with fitted responses
 all_patients_df = pd.merge(
@@ -3208,8 +3183,3 @@ plot_radar(
 )
 
 print("\n===== Step 11 Comparison of Nine Classification Methods Completed =====")
-
-
-
-
-
